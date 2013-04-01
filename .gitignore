@@ -1,0 +1,8 @@
+obj/
+*.a
+*.bin
+*.dis
+*.elf
+*.map
+*.o
+

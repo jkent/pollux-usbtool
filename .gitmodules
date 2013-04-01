@@ -1,0 +1,6 @@
+[submodule "baremetal"]
+	path = baremetal
+	url = git://github.com/jkent/pollux-baremetal.git
+[submodule "pyusb"]
+	path = pyusb
+	url = git://github.com/walac/pyusb.git
