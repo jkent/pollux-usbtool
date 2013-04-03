@@ -15,10 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __UDC_STREAM_DRIVER_H__
-#define __UDC_STREAM_DRIVER_H__
+#ifndef __USBTOOL_DRIVER_H__
+#define __USBTOOL_DRIVER_H__
 
-struct udc_driver udc_stream_driver;
+struct udc_driver usbtool_udc_driver;
 
-#endif /* __UDC_STREAM_DRIVER_H__ */
+#endif /* __USBTOOL_DRIVER_H__ */
 

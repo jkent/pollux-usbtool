@@ -22,11 +22,11 @@
 
 #include "asm/io.h"
 #include "asm/types.h"
+#include "usb/ch9.h"
 #include "mach/udc.h"
 #include "mach/dma.h"
 
-#include "udc/udc.h"
-#include "usb/ch9.h"
+#include "udc.h"
 #include "uart.h"
 #include "util.h"
 
@@ -102,10 +102,30 @@ static int udc_write_fifo(struct udc_ep *ep, struct udc_req *req)
 	req->actual += length;
 
 	writew(length, udc->regs + UDC_BWCR);
-	for (count = 0; count < length; count += 2)
-		writew(*buf++, fifo);
 
-	if (count != max) {
+	if (ep_index(ep))
+	{
+		void __iomem *dma = (void __iomem *) DMA5_BASE;
+
+		/* Annoying! DMA seems to only work with 32-bit transfers
+		 * We'll see if that is still the case when we switch to
+		 * automatic DMA.  Else, we may need to look into alignment
+		 */
+		writel((u32)buf, dma + DMA_SRCADDR);
+		writel((u32)fifo, dma + DMA_DSTADDR);
+		writew(length-1, dma + DMA_LENGTH);
+		writew(ep_index(ep) + 11, dma + DMA_REQID);
+		writel(DMA_MODE_DSTNOREQ | DMA_MODE_DSTNOINC
+				| DMA_MODE_DSTIO | DMA_MODE_DSTSIZE_32BIT
+				| DMA_MODE_SRCNOREQ | DMA_MODE_SRCSIZE_32BIT
+				| DMA_MODE_RUN, dma + DMA_MODE);
+		while (readl(dma + DMA_MODE) & DMA_MODE_BUSY);
+	} else {
+		for (count = 0; count < length; count += 2)
+			writew(*buf++, fifo);
+	}
+
+	if (length != max) {
 		is_last = true;
 	} else {
 		if (req->length != req->actual || req->zero)
@@ -127,8 +147,7 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 	struct udc *udc = ep->dev;
 	void __iomem *fifo = ep->fifo;
 	u16 *buf, word;
-	int max = ep->maxpacket;
-	int buflen, count, length;
+	int buflen, count, length, bytes;
 	u32 offset;
 	u16 esr;
 	bool is_short;
@@ -144,8 +163,10 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 	count = readw(udc->regs + UDC_BRCR);
 	length = (esr & UDC_ESR_LWO) ? (count * 2 - 1) : (count * 2);
 
-	req->actual += min(length, buflen);
-	is_short = (length < max);
+	bytes = min(length, buflen);
+
+	req->actual += bytes;
+	is_short = (length < ep->maxpacket);
 
 	if (ep_index(ep))
 	{
@@ -153,14 +174,12 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 
 		writel((u32)fifo, dma + DMA_SRCADDR);
 		writel((u32)buf, dma + DMA_DSTADDR);
-		writel(min(buflen, length) - 1, dma + DMA_LENGTH);
+		writew(bytes - 1, dma + DMA_LENGTH);
 		writew(ep_index(ep) + 11, dma + DMA_REQID);
-		writel(DMA_MODE_INTPEND | DMA_MODE_DSTNOREQ
-				| DMA_MODE_DSTSIZE_16BIT | DMA_MODE_SRCNOREQ
-				| DMA_MODE_SRCNOINC | DMA_MODE_SRCIO
-				| DMA_MODE_SRCSIZE_16BIT | DMA_MODE_RUN,
-				dma + DMA_MODE);
-
+		writel(DMA_MODE_DSTNOREQ | DMA_MODE_DSTSIZE_16BIT
+				| DMA_MODE_SRCNOREQ | DMA_MODE_SRCNOINC
+				| DMA_MODE_SRCIO | DMA_MODE_SRCSIZE_16BIT
+				| DMA_MODE_RUN,	dma + DMA_MODE);
 		while (readl(dma + DMA_MODE) & DMA_MODE_BUSY);
 
 		if (buflen < length) {
@@ -174,7 +193,7 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 			word = readw(fifo);
 			if (buflen) {
 				*buf++ = word;
-				buflen--;
+				buflen -= 2;
 			} else {
 				req->status = -EOVERFLOW;
 			}
@@ -182,7 +201,6 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 	}
 
 	if (is_short || req->actual == req->length) {
-		writew(readw(udc->regs + UDC_ECR) | 1<<2, udc->regs + UDC_ECR);
 		udc_complete_req(ep, req, 0);
 		return 1;
 	}
@@ -713,11 +731,14 @@ void udc_task(void)
 	}
 }
 
-void udc_init(struct udc_driver *driver)
+int udc_init(struct udc_driver *driver)
 {
 	struct udc *udc = &_udc;
 	u16 cfg;
 	volatile int delay;
+
+	if (!driver)
+		return -EINVAL;
 
 	udc->regs = (void __iomem *) UDC_BASE;
 	udc->speed = USB_SPEED_UNKNOWN;
@@ -740,5 +761,10 @@ void udc_init(struct udc_driver *driver)
 
 	/* enable VBUS detection */
 	writew(UDC_USER1_VBUSENB, udc->regs + UDC_USER1);
+
+	/* driver */
+	udc->driver->init(udc);
+
+	return 0;
 }
 

@@ -21,99 +21,74 @@
 #include "asm/io.h"
 #include "util.h"
 
-#include "udc/udc.h"
-#include "udc/stream_descriptors.h"
+#include "udc.h"
+#include "usbtool_descriptors.h"
 
-static struct udc_req _req;
-static struct udc_req rx_req = {0};
 
-static void rx_complete(struct udc_ep *ep, struct udc_req *req)
-{
-	if (req->status) {
-		putchar('x'); fflush(stdout);
-		return;
-	}
+static struct udc_req setup_req = {0};
+static struct udc_req command_req = {0};
+static struct udc_req buffer_req = {0};
 
-#if 0
-	char *p = (char *) req->buf;
-	int i;
-	for (i = 0; i < req->actual; i++)
-		putchar(*p++);
-	putchar('\n');
-#endif
-
-	ep->ops->queue(ep, req);
-}
 
 static void configured(struct udc *udc)
 {
-	//struct udc_ep *tx_ep = &udc->ep[1];
 	struct udc_ep *rx_ep = &udc->ep[2];
 
-	if (!rx_req.buf) {
-		rx_req.buf = malloc(1024 * 128);
-		rx_req.length = 1024 * 64;
-		rx_req.complete = rx_complete;
-	}
-	if (list_empty(&rx_ep->queue)) {
-		INIT_LIST_HEAD(&rx_req.queue);
-		rx_ep->ops->queue(rx_ep, &rx_req);
-	}
+	if (list_empty(&rx_ep->queue))
+		rx_ep->ops->queue(rx_ep, &command_req);
 }
 
 static inline int process_req_desc(struct udc *udc,
 		struct usb_ctrlrequest *ctrl)
 {
 	struct udc_ep *ep = &udc->ep[0];
-	struct udc_req *req = &_req;
+	struct udc_req *req = &setup_req;
 	int i;
-
-	bzero(req, sizeof(*req));
 
 	switch (ctrl->wValue >> 8) {
 	case USB_DT_DEVICE:
 		if (udc->speed == USB_SPEED_HIGH) {
-			req->buf = (u16 *)&stream_dths_dev;
-			req->length = stream_dths_dev.bLength;
+			req->buf = (u16 *)&usbtool_dths_dev;
+			req->length = usbtool_dths_dev.bLength;
 		} else {
-			req->buf = (u16 *)&stream_dtfs_dev;
-			req->length = stream_dtfs_dev.bLength;
+			req->buf = (u16 *)&usbtool_dtfs_dev;
+			req->length = usbtool_dtfs_dev.bLength;
 		}
 		break;
 
 	case USB_DT_DEVICE_QUALIFIER:
 		if (udc->speed == USB_SPEED_HIGH) {
-			req->buf = (u16 *)&stream_dths_qual;
-			req->length = stream_dths_qual.bLength;
+			req->buf = (u16 *)&usbtool_dths_qual;
+			req->length = usbtool_dths_qual.bLength;
 		} else {
-			req->buf = (u16 *)&stream_dtfs_qual;
-			req->length = stream_dtfs_qual.bLength;
+			req->buf = (u16 *)&usbtool_dtfs_qual;
+			req->length = usbtool_dtfs_qual.bLength;
 		}
 		break;
 
 	case USB_DT_OTHER_SPEED_CONFIG:
 		if (udc->speed == USB_SPEED_HIGH) {
-			stream_dtfs_config.cfg.bDescriptorType =
+			usbtool_dtfs_config.cfg.bDescriptorType =
 					USB_DT_OTHER_SPEED_CONFIG;
-			req->buf = (u16 *)&stream_dtfs_dev;
-			req->length = stream_dtfs_dev.bLength;
+			req->buf = (u16 *)&usbtool_dtfs_dev;
+			req->length = usbtool_dtfs_dev.bLength;
 		} else {
-			stream_dths_config.cfg.bDescriptorType =
+			usbtool_dths_config.cfg.bDescriptorType =
 					USB_DT_OTHER_SPEED_CONFIG;
-			req->buf = (u16 *)&stream_dths_dev;
-			req->length = stream_dths_dev.bLength;
+			req->buf = (u16 *)&usbtool_dths_dev;
+			req->length = usbtool_dths_dev.bLength;
 		}
 		break;
 
 	case USB_DT_CONFIG:
 		if (udc->speed == USB_SPEED_HIGH) {
-			stream_dths_config.cfg.bDescriptorType = USB_DT_CONFIG;
-			req->buf = (u16 *)&stream_dths_config;
-			req->length = stream_dths_config.cfg.wTotalLength;
+			usbtool_dths_config.cfg.bDescriptorType = USB_DT_CONFIG;
+			req->buf = (u16 *)&usbtool_dths_config;
+			req->length = usbtool_dths_config.cfg.wTotalLength;
 		} else {
-			stream_dtfs_config.cfg.bDescriptorType = USB_DT_CONFIG;
-			req->buf = (u16 *)&stream_dtfs_config;
-			req->length = stream_dtfs_config.cfg.wTotalLength;
+			usbtool_dtfs_config.cfg.bDescriptorType = USB_DT_CONFIG;
+			req->buf = (u16 *)&usbtool_dtfs_config;
+			req->length = usbtool_dtfs_config.cfg.wTotalLength;
 		}
 		break;
 
@@ -121,8 +96,8 @@ static inline int process_req_desc(struct udc *udc,
 		i = ctrl->wValue & 0xFF;
 		if (i >= NUM_STRING_DESC)
 			return -1;
-		req->buf = (u16 *)stream_dt_string[i];
-		req->length = stream_dt_string[i]->bLength;
+		req->buf = (u16 *)usbtool_dt_string[i];
+		req->length = usbtool_dt_string[i]->bLength;
 		break;
 
 	default:
@@ -144,11 +119,11 @@ static inline void set_config(struct udc *udc, int config)
 	ep2 = &udc->ep[2];
 
 	if (udc->speed == USB_SPEED_HIGH) {
-		desc1 = &stream_dths_config.ep1;
-		desc2 = &stream_dths_config.ep2;
+		desc1 = &usbtool_dths_config.ep1;
+		desc2 = &usbtool_dths_config.ep2;
 	} else {
-		desc1 = &stream_dtfs_config.ep1;
-		desc2 = &stream_dtfs_config.ep2;
+		desc1 = &usbtool_dtfs_config.ep1;
+		desc2 = &usbtool_dtfs_config.ep2;
 	}
 
 	if (config) {
@@ -169,7 +144,7 @@ static inline int process_req_config(struct udc *udc,
 		struct usb_ctrlrequest *ctrl)
 {
 	struct udc_ep *ep = &udc->ep[0];
-	struct udc_req *req = &_req;
+	struct udc_req *req = &setup_req;
 
 	if (ctrl->bRequest == USB_REQ_SET_CONFIGURATION) {
 		if (ctrl->wValue > NUM_CONFIG_DESC)
@@ -188,7 +163,7 @@ static inline int process_req_iface(struct udc *udc,
 		struct usb_ctrlrequest *ctrl)
 {
 	struct udc_ep *ep = &udc->ep[0];
-	struct udc_req *req = &_req;
+	struct udc_req *req = &setup_req;
 	u8 interface = ctrl->wIndex & 0xff;
 	u8 alternate = ctrl->wValue & 0xff;
 	u16 reply;
@@ -233,7 +208,85 @@ static int process_setup(struct udc *udc, struct usb_ctrlrequest *ctrl)
 	return -1;
 }
 
-struct udc_driver udc_stream_driver = {
+static void handle_command(struct udc_ep *ep, struct udc_req *req)
+{
+	if (req->status) {
+		iprintf("cmd req error #%d\n", req->status);
+		return;
+	}
+
+	struct udc *udc = ep->dev;
+	struct udc_ep *tx_ep = &udc->ep[1];
+	struct udc_ep *rx_ep = &udc->ep[2];
+
+	char *buf = (char *)req->buf;
+	buf[req->actual] = '\0';
+
+	char group[9], command[9];
+	u32 n1, n2, n3, n4;
+	int ret;
+
+	ret = sscanf(buf, "%8s %8s %8x %8x %8x %8x", group, command, &n1, &n2, &n3, &n4);
+	if (ret < 2)
+		goto requeue;
+
+	if (strcmp(group, "buffer") == 0) {
+		if (strcmp(command, "read") == 0) {
+			if (ret != 4)
+				goto requeue;
+
+			u32 offset = n1 & 0xFFFFFE;
+			buffer_req.buf = (u16 *)(0x1000000 + offset);
+			buffer_req.length = min(0x1000000 - offset,
+					n2 & ~1);
+
+			ep->ops->queue(tx_ep, &buffer_req);
+			return;
+		} else if (strcmp(command, "write") == 0) {
+			if (ret != 4)
+				goto requeue;
+
+			u32 offset = n1 & 0xFFFFFE;
+			buffer_req.buf = (u16 *)(0x1000000 + offset);
+			buffer_req.length = min(0x1000000 - offset,
+					n2 & ~1);
+
+			ep->ops->queue(rx_ep, &buffer_req);
+			return;
+		}
+	}
+
+requeue:
+	ep->ops->queue(ep, req);
+}
+
+static void buffer_req_complete(struct udc_ep *ep, struct udc_req *req)
+{
+	struct udc *udc = ep->dev;
+	struct udc_ep *tx_ep = &udc->ep[1];
+	struct udc_ep *rx_ep = &udc->ep[2];
+
+	if (req->status) {
+		iprintf(" err #%d\n", req->status);
+		return;
+	}
+
+	ep->ops->queue(rx_ep, &command_req);
+}
+
+static void init(struct udc *udc)
+{
+	command_req.buf = malloc(513);
+	command_req.length = 512;
+	command_req.complete = handle_command;
+	INIT_LIST_HEAD(&command_req.queue);
+
+	buffer_req.complete = buffer_req_complete;
+	INIT_LIST_HEAD(&buffer_req.queue);
+}
+
+struct udc_driver usbtool_udc_driver = {
 	.setup = process_setup,
+	.init = init,
 };
 

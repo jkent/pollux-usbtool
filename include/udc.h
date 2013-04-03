@@ -15,8 +15,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __HSUDC_H__
-#define __HSUDC_H__
+#ifndef __UDC_H__
+#define __UDC_H__
 
 #include <stdbool.h>
 
@@ -40,6 +40,7 @@ enum ep0_state {
 };
 
 struct udc_driver {
+	void			(*init)(struct udc *udc);
 	int			(*setup)(struct udc *udc,
 					struct usb_ctrlrequest *ctrl);
 	void			(*vbuson)(struct udc *udc);
@@ -92,8 +93,8 @@ struct udc {
 	struct udc_ep		ep[NUM_ENDPOINTS];
 };
 
-void udc_init(struct udc_driver *driver);
+int udc_init(struct udc_driver *driver);
 void udc_task(void);
 
-#endif /* __HSUDC_H__  */
+#endif /* __UDC_H__  */
 

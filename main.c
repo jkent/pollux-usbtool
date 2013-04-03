@@ -22,8 +22,8 @@
 #include "mach/mcuy.h"
 #include "uart.h"
 
-#include "udc/udc.h"
-#include "udc/stream_driver.h"
+#include "udc.h"
+#include "usbtool_udc_driver.h"
 
 
 static void ddr_init(void)
@@ -95,14 +95,14 @@ int main(void)
 {
 	uart_init();
 
-	fputs("init: ddr", stdout); fflush(stdout);
-	ddr_init();
+	//fputs("init: ddr", stdout); fflush(stdout);
+	//ddr_init();
 
 	fputs(" pll", stdout); fflush(stdout);
 	pll_init();
 
 	fputs(" udc", stdout); fflush(stdout);
-	udc_init(&udc_stream_driver);
+	udc_init(&usbtool_udc_driver);
 
 	puts("\nready!");
 	

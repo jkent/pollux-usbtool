@@ -4,6 +4,8 @@
 import sys, os
 import time
 
+BUFFER_SIZE = 16*1024*1024
+
 usbmon_dir = os.path.dirname(os.path.abspath(__file__))
 pyusb_dir = os.path.join(usbmon_dir, 'pyusb')
 sys.path.insert(1, pyusb_dir)
@@ -31,7 +33,7 @@ def main():
         bAlternateSetting = alternate_setting
     )
 
-    ep = usb.util.find_descriptor(
+    tx_ep = usb.util.find_descriptor(
         intf,
         # match the first OUT endpoint
         custom_match = \
@@ -40,25 +42,78 @@ def main():
             usb.util.ENDPOINT_OUT
     )
 
-    assert ep is not None
+    rx_ep = usb.util.find_descriptor(
+        intf,
+        # match the first IN endpoint
+        custom_match = \
+        lambda e: \
+            usb.util.endpoint_direction(e.bEndpointAddress) == \
+            usb.util.ENDPOINT_IN
+    )
+   
+    test_size = 1024
 
-    #ep.write(' ' * 257);
+    for i in xrange(1,256):
+        test_size = i * 4
 
-    #data = ''.join([chr(x) for x in xrange(0, 256)])
-    #data *= 4
-    #ep.write(data)
-    #if not len(data) % 512:
-    #    ep.write('')
+        print "Generating"
+        data_out = os.urandom(test_size) * 1024
+        buffer_write(tx_ep, data_out)
+        data_in = buffer_read(tx_ep, rx_ep, test_size * 1024)
+        if data_in != data_out:
+            print "error!"
+            print len(data_out), repr(data_out)
+            print len(data_in), repr(data_in)
+            break
 
-    test_txspeed(ep)
-    
+    #test_txspeed(ep)
+
+def write_all(ep, data):
+    length = len(data)
+    written = 0
+    while written < length:
+        chunk = data[written:written+64*1024]
+        written += ep.write(chunk)
+
+def read_all(ep, length):
+    data = ep.read(length)
+    data = ''.join(map(chr, data))
+    return data
+
+def buffer_write(ep, data, offset=0):
+    offset &= ~3
+    length = min(len(data), BUFFER_SIZE - offset)
+    remainder = length % 4
+    if remainder:
+        data += '\0' * remainder
+        length += remainder
+    command = 'buffer write %08x %08x' % (offset, length)
+    sys.stdout.write(command); sys.stdout.flush()
+    write_all(ep, command)
+    write_all(ep, data[:length])
+    sys.stdout.write('\n')
+    return length
+
+def buffer_read(tx_ep, rx_ep, length, offset=0):
+    offset &= ~3
+    length = min(length, BUFFER_SIZE - offset)
+    remainder = length % 4
+    if remainder:
+        length += remainder
+    command = 'buffer read %08x %08x' % (offset, length)
+    sys.stdout.write(command)
+    write_all(tx_ep, command)
+    data = read_all(rx_ep, length)
+    sys.stdout.write('\n')
+    return data
+
 
 def test_txspeed(ep, megabytes=4):
     test_size = int(megabytes * 1024 * 1024)
-    chunk_size = 64 * 1024
+    chunk_size = 512 * 128
 
-    #data = os.urandom(64)
-    data = ''.join([chr(x) for x in xrange(0, 256)])
+    data = os.urandom(64)
+    #data = ''.join([chr(x) for x in xrange(0, 256)])
     data *= chunk_size / len(data)
 
     start_time = time.time()
@@ -66,10 +121,8 @@ def test_txspeed(ep, megabytes=4):
     for chunk in xrange(test_size / chunk_size):
         try:
             ep.write(data)
-            #if not chunk_size % 512:
-            #    ep.write('')
-            sys.stdout.write('.')
-            sys.stdout.flush()
+            #sys.stdout.write('.')
+            #sys.stdout.flush()
         except:
             print 'error sending chunk %d' % chunk
             return

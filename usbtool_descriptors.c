@@ -16,13 +16,14 @@
  */
 
 #include "usb/ch9.h"
-#include "udc/stream_descriptors.h"
+
+#include "usbtool_descriptors.h"
 
 #define MANUFACTURER_STRING u"Jeff Kent <jeff@jkent.net>"
 #define PRODUCT_STRING u"POLLUX usbtool"
 
 /* High speed descriptors */
-const struct usb_device_descriptor stream_dths_dev = {
+const struct usb_device_descriptor usbtool_dths_dev = {
 	.bLength            = USB_DT_DEVICE_SIZE,
 	.bDescriptorType    = USB_DT_DEVICE,
 	.bcdUSB             = 0x0200,
@@ -34,7 +35,7 @@ const struct usb_device_descriptor stream_dths_dev = {
 	.bNumConfigurations = NUM_CONFIG_DESC,
 };
 
-const struct usb_qualifier_descriptor stream_dths_qual = {
+const struct usb_qualifier_descriptor usbtool_dths_qual = {
 	.bLength            = USB_DT_DEVICE_QUALIFIER_SIZE,
 	.bDescriptorType    = USB_DT_DEVICE_QUALIFIER,
 	.bcdUSB             = 0x0200,
@@ -42,7 +43,7 @@ const struct usb_qualifier_descriptor stream_dths_qual = {
 	.bNumConfigurations = 1,
 };
 
-struct usb_device_config_descriptor stream_dths_config = {
+struct usb_device_config_descriptor usbtool_dths_config = {
 	.cfg = {
 		.bLength             = USB_DT_CONFIG_SIZE,
 		.bDescriptorType     = USB_DT_CONFIG,
@@ -77,7 +78,7 @@ struct usb_device_config_descriptor stream_dths_config = {
 };
 
 /* Full speed descriptors */
-const struct usb_device_descriptor stream_dtfs_dev = {
+const struct usb_device_descriptor usbtool_dtfs_dev = {
 	.bLength            = USB_DT_DEVICE_SIZE,
 	.bDescriptorType    = USB_DT_DEVICE,
 	.bcdUSB             = 0x0200,
@@ -89,7 +90,7 @@ const struct usb_device_descriptor stream_dtfs_dev = {
 	.bNumConfigurations = NUM_CONFIG_DESC,
 };
 
-const struct usb_qualifier_descriptor stream_dtfs_qual = {
+const struct usb_qualifier_descriptor usbtool_dtfs_qual = {
 	.bLength            = USB_DT_DEVICE_QUALIFIER_SIZE,
 	.bDescriptorType    = USB_DT_DEVICE_QUALIFIER,
 	.bcdUSB             = 0x0200,
@@ -97,7 +98,7 @@ const struct usb_qualifier_descriptor stream_dtfs_qual = {
 	.bNumConfigurations = 1,
 };
 
-struct usb_device_config_descriptor stream_dtfs_config = {
+struct usb_device_config_descriptor usbtool_dtfs_config = {
 	.cfg = {
 		.bLength             = USB_DT_CONFIG_SIZE,
 		.bDescriptorType     = USB_DT_CONFIG,
@@ -149,7 +150,7 @@ static const struct usb_string_descriptor str2_descriptor = {
 	.wData           = { PRODUCT_STRING },
 };
 
-const struct usb_string_descriptor *stream_dt_string[NUM_STRING_DESC] = {
+const struct usb_string_descriptor *usbtool_dt_string[NUM_STRING_DESC] = {
 	&str0_descriptor,
 	&str1_descriptor,
 	&str2_descriptor,

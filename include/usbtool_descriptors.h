@@ -15,8 +15,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __USB_DESCRIPTORS_H__
-#define __USB_DESCRIPTORS_H__
+#ifndef __USBTOOL_DESCRIPTORS_H__
+#define __USBTOOL_DESCRIPTORS_H__
 
 #include "usb/ch9.h"
 
@@ -30,15 +30,15 @@ struct usb_device_config_descriptor {
 	struct usb_endpoint_descriptor ep2;
 } __attribute__((packed));
 
-const struct usb_device_descriptor stream_dths_dev;
-const struct usb_qualifier_descriptor stream_dths_qual;
-struct usb_device_config_descriptor stream_dths_config;
+const struct usb_device_descriptor usbtool_dths_dev;
+const struct usb_qualifier_descriptor usbtool_dths_qual;
+struct usb_device_config_descriptor usbtool_dths_config;
 
-const struct usb_device_descriptor stream_dtfs_dev;
-const struct usb_qualifier_descriptor stream_dtfs_qual;
-struct usb_device_config_descriptor stream_dtfs_config;
+const struct usb_device_descriptor usbtool_dtfs_dev;
+const struct usb_qualifier_descriptor usbtool_dtfs_qual;
+struct usb_device_config_descriptor usbtool_dtfs_config;
 
-const struct usb_string_descriptor *stream_dt_string[NUM_STRING_DESC];
+const struct usb_string_descriptor *usbtool_dt_string[NUM_STRING_DESC];
 
-#endif /* __USB_DESCRIPTORS_H__ */
+#endif /* __USBTOOL_DESCRIPTORS_H__ */
 
