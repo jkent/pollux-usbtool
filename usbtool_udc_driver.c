@@ -19,7 +19,7 @@
 #include <string.h>
 
 #include "asm/io.h"
-#include "util.h"
+#include "baremetal/util.h"
 
 #include "udc.h"
 #include "usbtool_descriptors.h"
@@ -28,6 +28,8 @@
 static struct udc_req setup_req = {0};
 static struct udc_req command_req = {0};
 static struct udc_req buffer_req = {0};
+
+static u16 command_buf[256];
 
 
 static void configured(struct udc *udc)
@@ -267,7 +269,7 @@ static void buffer_req_complete(struct udc_ep *ep, struct udc_req *req)
 	struct udc_ep *rx_ep = &udc->ep[2];
 
 	if (req->status) {
-		iprintf(" err #%d\n", req->status);
+		iprintf("buf req error #%d\n", req->status);
 		return;
 	}
 
@@ -276,8 +278,8 @@ static void buffer_req_complete(struct udc_ep *ep, struct udc_req *req)
 
 static void init(struct udc *udc)
 {
-	command_req.buf = malloc(513);
-	command_req.length = 512;
+	command_req.buf = command_buf;
+	command_req.length = sizeof(command_buf) - 2;
 	command_req.complete = handle_command;
 	INIT_LIST_HEAD(&command_req.queue);
 

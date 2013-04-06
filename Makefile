@@ -61,8 +61,8 @@ endef
 define new_s_rule
 $(2)%.o: $(1)%.S
 	@mkdir -p $$(@D)
-	$(CC) -c $$(CFLAGS) $$(INCLUDE) -Wa,--defsym,_start=0 -o $$@ $$<
-	@$(CC) -MM $$(CFLAGS) $$(INCLUDE) -Wa,--defsym,_start=0 $$< | \
+	$(CC) -c $$(CFLAGS) $$(INCLUDE) -Wa,--defsym,_entry=0 -o $$@ $$<
+	@$(CC) -MM $$(CFLAGS) $$(INCLUDE) -Wa,--defsym,_entry=0 $$< | \
 	  sed -e 's/.*:/$$(subst /,\/,$$@):/' > $(2)$$*.d
 endef
 
@@ -76,13 +76,13 @@ $(foreach src_dir,$(sort $(DIRS)), \
 
 OBJS    = $(subst ./,./obj/,$(S_SRCS:.S=.o) $(C_SRCS:.c=.o))
 
-./obj/%.lds: $(BAREMETAL)/%.lds
+./obj/%.ld: $(BAREMETAL)/%.ld.in
 	@mkdir -p $(@D)
 	$(CC) -E -P -x c $(INCLUDE) -o $@ $<
 	@$(CC) -MM -x c $(INCLUDE) $< | \
-	  sed -e 's/.*:/$(subst /,\/,$@):/' > obj/$*.lds.d
+	  sed -e 's/.*:/$(subst /,\/,$@):/' > obj/$*.ld.d
 
-%.elf: $(BAREMETAL)/baremetal.lds $(BAREMETAL)/baremetal.a $(OBJS)
+%.elf: ./obj/baremetal.ld $(BAREMETAL)/baremetal.a $(OBJS)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) $(LDFLAGS) -Wl,-M,-Map,$(NAME).map -T $^ $(LIBS) -o $@
 

@@ -22,13 +22,11 @@
 
 #include "asm/io.h"
 #include "asm/types.h"
-#include "usb/ch9.h"
+#include "baremetal/util.h"
 #include "mach/udc.h"
-#include "mach/dma.h"
+#include "usb/ch9.h"
 
 #include "udc.h"
-#include "uart.h"
-#include "util.h"
 
 #define ESHUTDOWN 108
 
@@ -102,28 +100,8 @@ static int udc_write_fifo(struct udc_ep *ep, struct udc_req *req)
 	req->actual += length;
 
 	writew(length, udc->regs + UDC_BWCR);
-
-	if (ep_index(ep))
-	{
-		void __iomem *dma = (void __iomem *) DMA5_BASE;
-
-		/* Annoying! DMA seems to only work with 32-bit transfers
-		 * We'll see if that is still the case when we switch to
-		 * automatic DMA.  Else, we may need to look into alignment
-		 */
-		writel((u32)buf, dma + DMA_SRCADDR);
-		writel((u32)fifo, dma + DMA_DSTADDR);
-		writew(length-1, dma + DMA_LENGTH);
-		writew(ep_index(ep) + 11, dma + DMA_REQID);
-		writel(DMA_MODE_DSTNOREQ | DMA_MODE_DSTNOINC
-				| DMA_MODE_DSTIO | DMA_MODE_DSTSIZE_32BIT
-				| DMA_MODE_SRCNOREQ | DMA_MODE_SRCSIZE_32BIT
-				| DMA_MODE_RUN, dma + DMA_MODE);
-		while (readl(dma + DMA_MODE) & DMA_MODE_BUSY);
-	} else {
-		for (count = 0; count < length; count += 2)
-			writew(*buf++, fifo);
-	}
+	for (count = 0; count < length; count += 2)
+		writew(*buf++, fifo);
 
 	if (length != max) {
 		is_last = true;
@@ -168,35 +146,13 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 	req->actual += bytes;
 	is_short = (length < ep->maxpacket);
 
-	if (ep_index(ep))
-	{
-		void __iomem *dma = (void __iomem *) DMA4_BASE;
-
-		writel((u32)fifo, dma + DMA_SRCADDR);
-		writel((u32)buf, dma + DMA_DSTADDR);
-		writew(bytes - 1, dma + DMA_LENGTH);
-		writew(ep_index(ep) + 11, dma + DMA_REQID);
-		writel(DMA_MODE_DSTNOREQ | DMA_MODE_DSTSIZE_16BIT
-				| DMA_MODE_SRCNOREQ | DMA_MODE_SRCNOINC
-				| DMA_MODE_SRCIO | DMA_MODE_SRCSIZE_16BIT
-				| DMA_MODE_RUN,	dma + DMA_MODE);
-		while (readl(dma + DMA_MODE) & DMA_MODE_BUSY);
-
-		if (buflen < length) {
-			count -= buflen;
-			while (count--)
-				readw(fifo);
+	while (count--) {
+		word = readw(fifo);
+		if (buflen) {
+			*buf++ = word;
+			buflen -= 2;
+		} else {
 			req->status = -EOVERFLOW;
-		}
-	} else {
-		while (count--) {
-			word = readw(fifo);
-			if (buflen) {
-				*buf++ = word;
-				buflen -= 2;
-			} else {
-				req->status = -EOVERFLOW;
-			}
 		}
 	}
 

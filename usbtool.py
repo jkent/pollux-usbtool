@@ -81,9 +81,9 @@ def read_all(ep, length):
     return data
 
 def buffer_write(ep, data, offset=0):
-    offset &= ~3
+    offset &= ~1
     length = min(len(data), BUFFER_SIZE - offset)
-    remainder = length % 4
+    remainder = length % 2
     if remainder:
         data += '\0' * remainder
         length += remainder
@@ -95,13 +95,13 @@ def buffer_write(ep, data, offset=0):
     return length
 
 def buffer_read(tx_ep, rx_ep, length, offset=0):
-    offset &= ~3
+    offset &= ~1
     length = min(length, BUFFER_SIZE - offset)
-    remainder = length % 4
+    remainder = length % 2
     if remainder:
         length += remainder
     command = 'buffer read %08x %08x' % (offset, length)
-    sys.stdout.write(command)
+    sys.stdout.write(command); sys.stdout.flush()
     write_all(tx_ep, command)
     data = read_all(rx_ep, length)
     sys.stdout.write('\n')
