@@ -439,6 +439,7 @@ static int udc_enable_ep(struct udc_ep *ep,
 
 	set_index(udc, ep->address);
 	ecr |= usb_endpoint_xfer_int(desc) ? UDC_ECR_IEMS : UDC_ECR_DUEN;
+	ecr |= UDC_ECR_CDP;
 	writew(ecr, udc->regs + UDC_ECR);
 
 	ep->maxpacket = desc->wMaxPacketSize;

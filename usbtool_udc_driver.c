@@ -21,6 +21,7 @@
 #include "asm/io.h"
 #include "baremetal/util.h"
 
+#include "nand.h"
 #include "udc.h"
 #include "usbtool_descriptors.h"
 
@@ -31,19 +32,28 @@ static struct udc_req buffer_req = {0};
 
 static u16 command_buf[256];
 
+static void command_request(struct udc_ep *ep, struct udc_req *req);
+static void command_response(struct udc_ep *ep, struct udc_req *req);
+
+static struct udc_ep *tx_ep;
+static struct udc_ep *rx_ep;
+
 
 static void configured(struct udc *udc)
 {
-	struct udc_ep *rx_ep = &udc->ep[2];
+	if (list_empty(&rx_ep->queue)) {
+		command_req.length = sizeof(command_buf) - 2;
+		command_req.complete = command_request;
+		INIT_LIST_HEAD(&command_req.queue);
 
-	if (list_empty(&rx_ep->queue))
 		rx_ep->ops->queue(rx_ep, &command_req);
+	}
 }
 
 static inline int process_req_desc(struct udc *udc,
 		struct usb_ctrlrequest *ctrl)
 {
-	struct udc_ep *ep = &udc->ep[0];
+	struct udc_ep *ep0 = &udc->ep[0];
 	struct udc_req *req = &setup_req;
 	int i;
 
@@ -108,17 +118,13 @@ static inline int process_req_desc(struct udc *udc,
 
 	INIT_LIST_HEAD(&req->queue);
 	req->length = min((u32)ctrl->wLength, req->length);
-	ep->ops->queue(ep, req);
+	ep0->ops->queue(ep0, req);
 	return 0;
 }
 
 static inline void set_config(struct udc *udc, int config)
 {
-	struct udc_ep *ep1, *ep2;
 	struct usb_endpoint_descriptor *desc1, *desc2;
-
-	ep1 = &udc->ep[1];
-	ep2 = &udc->ep[2];
 
 	if (udc->speed == USB_SPEED_HIGH) {
 		desc1 = &usbtool_dths_config.ep1;
@@ -128,15 +134,12 @@ static inline void set_config(struct udc *udc, int config)
 		desc2 = &usbtool_dtfs_config.ep2;
 	}
 
+	tx_ep->ops->disable(tx_ep);
+	rx_ep->ops->disable(rx_ep);
 	if (config) {
-		ep1->ops->enable(ep1, desc1);
-		ep2->ops->enable(ep2, desc2);
-		ep1->ops->fifo_flush(ep1);
-		ep2->ops->fifo_flush(ep2);
+		tx_ep->ops->enable(tx_ep, desc1);
+		rx_ep->ops->enable(rx_ep, desc2);
 		configured(udc);
-	} else {
-		ep1->ops->disable(ep1);
-		ep2->ops->disable(ep2);
 	}
 
 	udc->config = config;
@@ -145,7 +148,7 @@ static inline void set_config(struct udc *udc, int config)
 static inline int process_req_config(struct udc *udc,
 		struct usb_ctrlrequest *ctrl)
 {
-	struct udc_ep *ep = &udc->ep[0];
+	struct udc_ep *ep0 = &udc->ep[0];
 	struct udc_req *req = &setup_req;
 
 	if (ctrl->bRequest == USB_REQ_SET_CONFIGURATION) {
@@ -156,7 +159,7 @@ static inline int process_req_config(struct udc *udc,
 		bzero(req, sizeof(*req));
 		req->buf = &udc->config;
 		req->length = 1;
-		ep->ops->queue(ep, req);
+		ep0->ops->queue(ep0, req);
 	}
 	return 0;
 }
@@ -164,7 +167,7 @@ static inline int process_req_config(struct udc *udc,
 static inline int process_req_iface(struct udc *udc,
 		struct usb_ctrlrequest *ctrl)
 {
-	struct udc_ep *ep = &udc->ep[0];
+	struct udc_ep *ep0 = &udc->ep[0];
 	struct udc_req *req = &setup_req;
 	u8 interface = ctrl->wIndex & 0xff;
 	u8 alternate = ctrl->wValue & 0xff;
@@ -179,7 +182,7 @@ static inline int process_req_iface(struct udc *udc,
 		reply = 0;
 		req->buf = &reply;
 		req->length = 1;
-		ep->ops->queue(ep, req);
+		ep0->ops->queue(ep0, req);
 	}
 	return 0;
 }
@@ -210,16 +213,21 @@ static int process_setup(struct udc *udc, struct usb_ctrlrequest *ctrl)
 	return -1;
 }
 
-static void handle_command(struct udc_ep *ep, struct udc_req *req)
+static void command_response(struct udc_ep *ep, struct udc_req *req)
 {
-	if (req->status) {
-		iprintf("cmd req error #%d\n", req->status);
+	if (req->status)
 		return;
-	}
 
-	struct udc *udc = ep->dev;
-	struct udc_ep *tx_ep = &udc->ep[1];
-	struct udc_ep *rx_ep = &udc->ep[2];
+	req->length = sizeof(command_buf) - 2;
+	req->complete = command_request;
+
+	ep->ops->queue(rx_ep, req);
+}
+
+static void command_request(struct udc_ep *ep, struct udc_req *req)
+{
+	if (req->status)
+		return;
 
 	char *buf = (char *)req->buf;
 	buf[req->actual] = '\0';
@@ -244,7 +252,8 @@ static void handle_command(struct udc_ep *ep, struct udc_req *req)
 
 			ep->ops->queue(tx_ep, &buffer_req);
 			return;
-		} else if (strcmp(command, "write") == 0) {
+		} 
+		if (strcmp(command, "write") == 0) {
 			if (ret != 4)
 				goto requeue;
 
@@ -256,6 +265,30 @@ static void handle_command(struct udc_ep *ep, struct udc_req *req)
 			ep->ops->queue(rx_ep, &buffer_req);
 			return;
 		}
+		goto requeue;
+	}
+
+	if (strcmp(group, "nand") == 0) {
+		if (strcmp(command, "select") == 0) {
+			if (ret != 3)
+				goto requeue;
+
+			nand_select(n1);
+			goto requeue;
+		}
+
+		if (strcmp(command, "id") == 0) {
+			if (ret != 2)
+				goto requeue;
+
+			nand_readid(req->buf);
+			req->length = 8;
+			req->complete = command_response;
+
+			ep->ops->queue(tx_ep, req);
+			return;
+		}
+		goto requeue;
 	}
 
 requeue:
@@ -264,23 +297,20 @@ requeue:
 
 static void buffer_req_complete(struct udc_ep *ep, struct udc_req *req)
 {
-	struct udc *udc = ep->dev;
-	struct udc_ep *tx_ep = &udc->ep[1];
-	struct udc_ep *rx_ep = &udc->ep[2];
-
-	if (req->status) {
-		iprintf("buf req error #%d\n", req->status);
+	if (req->status)
 		return;
-	}
 
 	ep->ops->queue(rx_ep, &command_req);
 }
 
 static void init(struct udc *udc)
 {
+	tx_ep = &udc->ep[1];
+	rx_ep = &udc->ep[2];
+
 	command_req.buf = command_buf;
 	command_req.length = sizeof(command_buf) - 2;
-	command_req.complete = handle_command;
+	command_req.complete = command_request;
 	INIT_LIST_HEAD(&command_req.queue);
 
 	buffer_req.complete = buffer_req_complete;

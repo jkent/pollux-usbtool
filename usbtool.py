@@ -51,6 +51,7 @@ def main():
             usb.util.ENDPOINT_IN
     )
    
+    """
     test_size = 1024
 
     for i in xrange(1,256):
@@ -65,8 +66,20 @@ def main():
             print len(data_out), repr(data_out)
             print len(data_in), repr(data_in)
             break
+    """
 
     #test_txspeed(ep)
+
+    import binascii
+
+    nand_select(tx_ep, 0)
+    _id = nand_readid(tx_ep, rx_ep)
+    print "NAND(0): %s" % binascii.hexlify(_id)
+
+    nand_select(tx_ep, 1)
+    _id = nand_readid(tx_ep, rx_ep)
+    print "NAND(1): %s" % binascii.hexlify(_id)
+
 
 def write_all(ep, data):
     length = len(data)
@@ -107,6 +120,15 @@ def buffer_read(tx_ep, rx_ep, length, offset=0):
     sys.stdout.write('\n')
     return data
 
+def nand_select(tx_ep, chipnr):
+    command = 'nand select %08x' % (chipnr)
+    write_all(tx_ep, command)
+
+def nand_readid(tx_ep, rx_ep):
+    command = 'nand id'
+    write_all(tx_ep, command)
+    data = read_all(rx_ep, 8)
+    return data
 
 def test_txspeed(ep, megabytes=4):
     test_size = int(megabytes * 1024 * 1024)

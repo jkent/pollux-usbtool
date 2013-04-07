@@ -2,8 +2,9 @@
  * Copyright (C) 2013 Jeff Kent <jeff@jkent.net>
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -15,31 +16,13 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <stdio.h>
+#ifndef _NAND_H_
+#define _NAND_H_
 
-#include "udc.h"
-#include "nand.h"
-#include "usbtool_udc_driver.h"
+void nand_init(void);
+void nand_select(int chipnr);
+void nand_reset(void);
+void nand_readid(unsigned char *id);
 
-int main(void)
-{
-	fputs("\ninit:", stdout);
-	fflush(stdout);
-
-	fputs(" nand", stdout);
-	fflush(stdout);
-	nand_init();
-
-	fputs(" udc", stdout);
-	fflush(stdout);
-	udc_init(&usbtool_udc_driver);
-
-	fputs("\nOK!\n", stdout);
-
-	while (1) {
-		udc_task();
-	}
-
-	return 0;
-}
+#endif /* _NAND_H_ */
 
