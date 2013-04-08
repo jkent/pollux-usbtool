@@ -3,6 +3,7 @@
 
 import sys, os
 import time
+import collections, struct
 
 BUFFER_SIZE = 16*1024*1024
 
@@ -51,35 +52,8 @@ def main():
             usb.util.ENDPOINT_IN
     )
    
-    """
-    test_size = 1024
-
-    for i in xrange(1,256):
-        test_size = i * 4
-
-        print "Generating"
-        data_out = os.urandom(test_size) * 1024
-        buffer_write(tx_ep, data_out)
-        data_in = buffer_read(tx_ep, rx_ep, test_size * 1024)
-        if data_in != data_out:
-            print "error!"
-            print len(data_out), repr(data_out)
-            print len(data_in), repr(data_in)
-            break
-    """
-
-    #test_txspeed(ep)
-
-    import binascii
-
-    nand_select(tx_ep, 0)
-    _id = nand_readid(tx_ep, rx_ep)
-    print "NAND(0): %s" % binascii.hexlify(_id)
-
-    nand_select(tx_ep, 1)
-    _id = nand_readid(tx_ep, rx_ep)
-    print "NAND(1): %s" % binascii.hexlify(_id)
-
+    print nand_info(tx_ep, rx_ep, 0)
+    print nand_info(tx_ep, rx_ep, 1)
 
 def write_all(ep, data):
     length = len(data)
@@ -89,8 +63,7 @@ def write_all(ep, data):
         written += ep.write(chunk)
 
 def read_all(ep, length):
-    data = ep.read(length)
-    data = ''.join(map(chr, data))
+    data = ep.read(length).tostring()
     return data
 
 def buffer_write(ep, data, offset=0):
@@ -120,40 +93,12 @@ def buffer_read(tx_ep, rx_ep, length, offset=0):
     sys.stdout.write('\n')
     return data
 
-def nand_select(tx_ep, chipnr):
-    command = 'nand select %08x' % (chipnr)
+def nand_info(tx_ep, rx_ep, chipnr):
+    command = 'nand info %08x' % (chipnr)
     write_all(tx_ep, command)
-
-def nand_readid(tx_ep, rx_ep):
-    command = 'nand id'
-    write_all(tx_ep, command)
-    data = read_all(rx_ep, 8)
-    return data
-
-def test_txspeed(ep, megabytes=4):
-    test_size = int(megabytes * 1024 * 1024)
-    chunk_size = 512 * 128
-
-    data = os.urandom(64)
-    #data = ''.join([chr(x) for x in xrange(0, 256)])
-    data *= chunk_size / len(data)
-
-    start_time = time.time()
-
-    for chunk in xrange(test_size / chunk_size):
-        try:
-            ep.write(data)
-            #sys.stdout.write('.')
-            #sys.stdout.flush()
-        except:
-            print 'error sending chunk %d' % chunk
-            return
-
-    delta_time = time.time() - start_time
-
-    bytes_per_second = test_size / delta_time
-    print "\n%.2f seconds elapsed, %.2f KB/s" % (delta_time, bytes_per_second / 1024)
-
+    data = rx_ep.read(512).tostring()
+    NandChip = collections.namedtuple('NandChip', 'num valid badblock_type addr_cycles id page_size block_size oob_size planes plane_size')
+    return NandChip._make(struct.unpack('<B?BB8sIIIII', data))
 
 if __name__ == '__main__':
     main()

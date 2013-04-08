@@ -218,6 +218,7 @@ static void command_response(struct udc_ep *ep, struct udc_req *req)
 	if (req->status)
 		return;
 
+	req->buf = command_buf;
 	req->length = sizeof(command_buf) - 2;
 	req->complete = command_request;
 
@@ -269,23 +270,18 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 	}
 
 	if (strcmp(group, "nand") == 0) {
-		if (strcmp(command, "select") == 0) {
+		if (strcmp(command, "info") == 0) {
 			if (ret != 3)
 				goto requeue;
 
-			nand_select(n1);
-			goto requeue;
-		}
-
-		if (strcmp(command, "id") == 0) {
-			if (ret != 2)
+			if (n1 >= NAND_MAX_CHIPS)
 				goto requeue;
 
-			nand_readid(req->buf);
-			req->length = 8;
+			req->buf = &nand_chips[n1];
+			req->length = sizeof(struct nand_chip);
 			req->complete = command_response;
 
-			ep->ops->queue(tx_ep, req);
+			tx_ep->ops->queue(tx_ep, req);
 			return;
 		}
 		goto requeue;
