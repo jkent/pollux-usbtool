@@ -25,19 +25,17 @@
 
 #define NAND_MAX_CHIPS		(2)
 
-#define BADBLOCK_1ST_PG		(0x01)
-#define BADBLOCK_LAST_PG	(0x04)
-#define BADBLOCK_1ST_BYTE	(0x10)
-#define BADBLOCK_6TH_BYTE	(0x20)
-
 struct nand_chip {
 	u8 num;
 	bool valid;
-	u8 badblock_type;
+	u8 badblockpos;
 	u8 addr_cycles;
 	u8 id[8];
+	u32 page_shift;
 	u32 page_size;     /* bytes */
-	u32 block_size;    /* kilobytes */
+	u32 block_shift;
+	u32 block_size;    /* bytes */
+	u32 pagemask;
 	u32 oob_size;      /* bytes */
 	u32 planes;        /* count */
 	u32 plane_size;    /* kilobytes */
@@ -47,6 +45,8 @@ extern struct nand_chip nand_chips[2];
 
 void nand_init(void);
 void nand_select(struct nand_chip *chip);
+bool nand_block_bad(struct nand_chip *chip, u64 ofs);
+int nand_erase(struct nand_chip *chip, u64 ofs);
 
 #endif /* _NAND_H_ */
 

@@ -21,20 +21,28 @@
 #include "nand.h"
 #include "usbtool_udc_driver.h"
 
+extern int ramsize;
+
 int main(void)
 {
-	fputs("\ninit:", stdout);
-	fflush(stdout);
+	int i;
 
-	fputs(" nand", stdout);
-	fflush(stdout);
 	nand_init();
-
-	fputs(" udc", stdout);
-	fflush(stdout);
 	udc_init(&usbtool_udc_driver);
 
-	fputs("\nOK!\n", stdout);
+	if (ramsize != -1) {
+		iprintf("%d MB RAM\n", ramsize);
+	}
+
+	for (i = 0; i <= NAND_MAX_CHIPS; i++) {
+		struct nand_chip *chip = &nand_chips[i];
+		if (chip->valid) {
+			iprintf("%d MB NAND\n",
+				(chip->plane_size * chip->planes) / 1024);
+		}
+	}
+		
+	fputs("\nReady!\n", stdout);
 
 	while (1) {
 		udc_task();

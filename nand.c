@@ -41,7 +41,7 @@ static void nand_wait(void)
 	while (!(readl(mcus_regs + MCUS_NFCONTROL) & MCUS_NFCONTROL_INTPEND));
 
 	val = readl(mcus_regs + MCUS_NFCONTROL);
-	val &= ~MCUS_NFCONTROL_INTPEND;
+	val |= MCUS_NFCONTROL_INTPEND;
 	writel(val, mcus_regs + MCUS_NFCONTROL);
 }
 
@@ -58,36 +58,78 @@ static int nand_wait_status(struct nand_chip *chip)
 
 static void nand_command(struct nand_chip *chip, unsigned int command, int column, int page_addr)
 {
-	if (command == NAND_CMD_SEQIN) {
-		if (column >= chip->page_size) {
-			column -= chip->page_size;
-			writeb(NAND_CMD_READOOB, nand_regs + NAND_CMD);
-		} else if (column < 256) {
-			writeb(NAND_CMD_READ0, nand_regs + NAND_CMD);
-		} else {
-			column -= 256;
-			writeb(NAND_CMD_READ1, nand_regs + NAND_CMD);
+	nand_select(chip);
+
+	if (chip->page_size <= 512) {
+		if (command == NAND_CMD_SEQIN) {
+			if (column >= chip->page_size) {
+				column -= chip->page_size;
+				writeb(NAND_CMD_READOOB, nand_regs + NAND_CMD);
+			} else if (column < 256) {
+				writeb(NAND_CMD_READ0, nand_regs + NAND_CMD);
+			} else {
+				column -= 256;
+				writeb(NAND_CMD_READ1, nand_regs + NAND_CMD);
+			}
 		}
-	}
-	writeb(command, nand_regs + NAND_CMD);
+		writeb(command, nand_regs + NAND_CMD);
 
-	if (column >= 0)
-		writeb(column, nand_regs + NAND_ADDR);
+		if (column != -1)
+			writeb(column, nand_regs + NAND_ADDR);
 		
-	if (page_addr >= 0) {
-		writeb(page_addr, nand_regs + NAND_ADDR);
-		writeb(page_addr >> 8, nand_regs + NAND_ADDR);
-		if (chip->addr_cycles >= 4)
-			writeb(page_addr >> 16, nand_regs + NAND_ADDR);
-	}
+		if (page_addr != -1) {
+			writeb(page_addr, nand_regs + NAND_ADDR);
+			writeb(page_addr >> 8, nand_regs + NAND_ADDR);
+			if (chip->addr_cycles >= 4)
+				writeb(page_addr >> 16, nand_regs + NAND_ADDR);
+		}
 
-	switch (command) {
-	case NAND_CMD_PAGEPROG:
-	case NAND_CMD_ERASE1:
-	case NAND_CMD_ERASE2:
-	case NAND_CMD_SEQIN:
-	case NAND_CMD_STATUS:
-		return;
+		switch (command) {
+		case NAND_CMD_PAGEPROG:
+		case NAND_CMD_ERASE1:
+		case NAND_CMD_ERASE2:
+		case NAND_CMD_SEQIN:
+		case NAND_CMD_STATUS:
+			return;
+		}
+	} else {
+		if (command == NAND_CMD_READOOB) {
+			column += chip->page_size;
+			command = NAND_CMD_READ0;
+		}
+
+		writeb(command, nand_regs + NAND_CMD);
+
+		if (column != -1 || page_addr != -1) {
+			if (column != -1) {
+				writeb(column, nand_regs + NAND_ADDR);
+				writeb(column >> 8, nand_regs + NAND_ADDR);
+			}
+			if (page_addr != -1) {
+				writeb(page_addr, nand_regs + NAND_ADDR);
+				writeb(page_addr >> 8, nand_regs + NAND_ADDR);
+				if (chip->addr_cycles >= 5)
+					writeb(page_addr >> 16, nand_regs + NAND_ADDR);
+			}
+		}
+
+		switch (command) {
+		case NAND_CMD_CACHEDPROG:
+		case NAND_CMD_PAGEPROG:
+		case NAND_CMD_ERASE1:
+		case NAND_CMD_ERASE2:
+		case NAND_CMD_SEQIN:
+		case NAND_CMD_RNDIN:
+		case NAND_CMD_STATUS:
+			return;
+
+		case NAND_CMD_RNDOUT:
+			writeb(NAND_CMD_RNDOUTSTART, nand_regs + NAND_CMD);
+			return;
+
+		case NAND_CMD_READ0:
+			writeb(NAND_CMD_READSTART, nand_regs + NAND_CMD);
+		}
 	}
 
 	nand_wait();
@@ -95,38 +137,30 @@ static void nand_command(struct nand_chip *chip, unsigned int command, int colum
 	return;
 }
 
-int nand_erase(struct nand_chip *chip, int page_addr)
-{
-	nand_command(chip, NAND_CMD_ERASE1, -1, page_addr);
-	nand_command(chip, NAND_CMD_ERASE2, -1, -1);
-
-	return nand_wait_status(chip);
-}
-
 /* works only with old 5-byte IDs */
 static void nand_decode_ext_id(struct nand_chip *chip)
 {
 	int n;
 
-	chip->badblock_type = BADBLOCK_1ST_PG | BADBLOCK_1ST_BYTE;
+	chip->badblockpos = 0;
 	chip->addr_cycles = 0;
-	chip->page_size = 0x400 << (chip->id[3] & 0x3);
-	chip->block_size = 0x40 << ((chip->id[3] >> 4) & 0x3);
+	chip->page_shift = 10 + (chip->id[3] & 0x3);
+	chip->page_size = 1 << chip->page_shift;
+	chip->block_shift = 16 + ((chip->id[3] >> 4) & 0x3);
+	chip->block_size = 1 << chip->block_shift;
+	chip->pagemask = (1 << (chip->block_shift - chip->page_shift)) - 1;
 	chip->oob_size = (chip->page_size / 0x200) *
 			(8 << ((chip->id[3] >> 2) & 1));
 	chip->planes = 1 << ((chip->id[4] >> 2) & 0x3);
 	chip->plane_size = 0x2000 << ((chip->id[4] >> 4) & 0x7);
 
 	/* columns */
-	n = chip->page_size - 1;
-	while (n) {
-		chip->addr_cycles++;
-		n >>= 8;
-	}
+	chip->addr_cycles = (chip->page_shift + 7) / 8;
 
 	/* rows */
-	n = (chip->block_size << 10) / chip->page_size; /* pages per block */
-	n *= (chip->planes * chip->plane_size) / chip->block_size; /* blocks per device */
+	n = 1 << (chip->block_shift - chip->page_shift); /* pages per block */
+	n *= (chip->planes * chip->plane_size) /
+			(chip->block_size >> 10); /* blocks per device */
 	while (n) {
 		chip->addr_cycles++;
 		n >>= 8;
@@ -169,11 +203,13 @@ static int nand_identify(struct nand_chip *chip)
 	case 0xEC: /* Samsung */
 		switch (id[1]) {
 		case 0x76: /* 64MB/512 */
-			chip->badblock_type = BADBLOCK_1ST_PG |
-					BADBLOCK_6TH_BYTE;
+			chip->badblockpos = 5;
 			chip->addr_cycles = 1 + 3;
-			chip->page_size  = 512;
-			chip->block_size = 16;
+			chip->page_shift = 9;
+			chip->page_size  = 1 << chip->page_shift;
+			chip->block_shift = 14;
+			chip->block_size = 1 << chip->block_shift;
+			chip->pagemask   = (1 << (chip->block_shift - chip->page_shift)) - 1;
 			chip->oob_size   = 16;
 			chip->planes     = 2;
 			chip->plane_size = 32768;
@@ -202,7 +238,6 @@ void nand_init(void)
 		chip->num = chipnr;
 
 		if (nand_identify(chip)) {
-			iprintf("%d MB NAND\n", (chip->plane_size * chip->planes) / 1024);
 			nand_command(chip, NAND_CMD_RESET, -1, -1);
 		}
 	}
@@ -229,5 +264,34 @@ void nand_select(struct nand_chip *chip)
 	selected_chip = chip->num;
 
 	writel(val, mcus_regs + MCUS_NFCONTROL);
+}
+
+bool nand_block_bad(struct nand_chip *chip, u64 ofs)
+{
+	int page, i;
+	u8 bad;
+
+	page = (int)(ofs >> chip->page_shift) & ~chip->pagemask;
+
+	for (i = 0; i < chip->planes; i++) {
+		nand_command(chip, NAND_CMD_READOOB, chip->badblockpos, page);		
+  		bad = readb(nand_regs + NAND_DATA);
+		if (bad != 0xFF)
+			return true;
+		page++;
+	}
+	return false;
+}
+
+int nand_erase(struct nand_chip *chip, u64 ofs)
+{
+	int page;
+
+	page = (int)(ofs >> chip->page_shift) & ~chip->pagemask;
+
+	nand_command(chip, NAND_CMD_ERASE1, -1, page);
+	nand_command(chip, NAND_CMD_ERASE2, -1, -1);
+
+	return nand_wait_status(chip);
 }
 
