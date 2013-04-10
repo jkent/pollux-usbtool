@@ -28,7 +28,6 @@ int main(void)
 	int i;
 
 	nand_init();
-	udc_init(&usbtool_udc_driver);
 
 	if (ramsize != -1) {
 		iprintf("%d MB RAM\n", ramsize);
@@ -41,6 +40,8 @@ int main(void)
 				(chip->plane_size * chip->planes) / 1024);
 		}
 	}
+
+	udc_init(&usbtool_udc_driver);
 		
 	fputs("\nReady!\n", stdout);
 

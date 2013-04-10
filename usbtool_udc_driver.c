@@ -285,15 +285,17 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			return;
 		}
 		if (strcmp(command, "bad") == 0) {
-			if (ret != 5)
+			if (ret != 3)
 				goto requeue;
 
 			if (n1 >= NAND_MAX_CHIPS)
 				goto requeue;
 
-			((char *)req->buf)[0] = nand_block_bad(&nand_chips[n1],
-				((u64)n2 << 32) | n3);
-			req->length = 1;
+			struct nand_chip *chip = &nand_chips[n1];
+
+			req->buf = nand_bbt[n1];
+			req->length = ((chip->plane_size * chip->planes) /
+					(chip->block_size >> 10)) / 4;
 			req->complete = command_response;
 
 			tx_ep->ops->queue(tx_ep, req);

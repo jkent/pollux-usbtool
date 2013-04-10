@@ -31,6 +31,7 @@ static void __iomem *mcus_regs = (void __iomem *) MCUS_BASE;
 static void __iomem *nand_regs = (void __iomem *) NAND_BASE;
 
 struct nand_chip nand_chips[2] = {{0}};
+char nand_bbt[2][1024] = {{0}};
 
 static int selected_chip = 0;
 
@@ -229,6 +230,26 @@ static int nand_identify(struct nand_chip *chip)
 	return 0;
 }
 
+void nand_scan_bad(struct nand_chip *chip)
+{
+	int block, page, plane;
+	u8 bad;
+	char *bbt = nand_bbt[chip->num];
+	int num_blocks = (chip->plane_size * chip->planes) /
+			(chip->block_size >> 10);
+
+	for (block = 0; block < num_blocks; block++) {
+		page = block << (chip->block_shift - chip->page_shift);
+		for (plane = 0; plane < chip->planes; plane++) {
+			nand_command(chip, NAND_CMD_READOOB, chip->badblockpos, page);		
+	  		bad = readb(nand_regs + NAND_DATA);
+			if (bad != 0xFF)
+				bbt[block / 4] |= 0x1 << ((block & 0x3) * 2);
+			page++;
+		}
+	}
+}
+
 void nand_init(void)
 {
 	int chipnr;
@@ -239,6 +260,7 @@ void nand_init(void)
 
 		if (nand_identify(chip)) {
 			nand_command(chip, NAND_CMD_RESET, -1, -1);
+			nand_scan_bad(chip);
 		}
 	}
 }
@@ -264,23 +286,6 @@ void nand_select(struct nand_chip *chip)
 	selected_chip = chip->num;
 
 	writel(val, mcus_regs + MCUS_NFCONTROL);
-}
-
-bool nand_block_bad(struct nand_chip *chip, u64 ofs)
-{
-	int page, i;
-	u8 bad;
-
-	page = (int)(ofs >> chip->page_shift) & ~chip->pagemask;
-
-	for (i = 0; i < chip->planes; i++) {
-		nand_command(chip, NAND_CMD_READOOB, chip->badblockpos, page);		
-  		bad = readb(nand_regs + NAND_DATA);
-		if (bad != 0xFF)
-			return true;
-		page++;
-	}
-	return false;
 }
 
 int nand_erase(struct nand_chip *chip, u64 ofs)

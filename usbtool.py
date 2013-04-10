@@ -58,25 +58,8 @@ def main():
             continue
         print "Chip %d: %d MB NAND" % (chipnr, (info.plane_size * info.planes) / 1024)
 
-        last_bad = None    
-        for i in xrange(0, 4096):
-            if nand_block_bad(tx_ep, rx_ep, chipnr, info.block_size*i):
-                if last_bad == None:
-                    last_bad = i
-            else:
-                if last_bad != None:
-                    if last_bad == i - 1:
-                        print "  block %d is bad" % last_bad
-                    else:
-                        print "  blocks %d - %d is bad" % (last_bad, i-1)
-                    last_bad = None
-        if last_bad != None:
-            if last_bad == i - 1:
-                print "  block %d is bad" % last_bad
-            else:
-                print "  blocks %d - %d are bad" % (last_bad, i)
-            last_bad = None
-
+        bad_blocks = nand_bad_blocks(tx_ep, rx_ep, chipnr)
+        print "  bad blocks:", bad_blocks
 
 def write_all(ep, data):
     length = len(data)
@@ -123,11 +106,18 @@ def nand_info(tx_ep, rx_ep, chipnr):
     NandChip = collections.namedtuple('NandChip', 'num valid badblockpos addr_cycles id page_shift page_size block_shift block_size pagemask oob_size planes plane_size')
     return NandChip._make(struct.unpack('<B?BB8sIIIIIIII', data))
 
-def nand_block_bad(tx_ep, rx_ep, chipnr, ofs):
-    command = 'nand bad %08x %08x %08x' % (chipnr, ofs >> 32, ofs & 0xFFFFFFFF)
+def nand_bad_blocks(tx_ep, rx_ep, chipnr):
+    command = 'nand bad %08x' % (chipnr)
     write_all(tx_ep, command)
-    data = rx_ep.read(1)
-    return (data[0] != 0)
+    data = rx_ep.read(1024)
+    bad_blocks = []
+    block = 0
+    for byte in data:
+        for i in xrange(4):
+            if byte & (0x3 << (i * 2)):
+                bad_blocks.append(block)
+            block += 1
+    return bad_blocks
 
 if __name__ == '__main__':
     main()
