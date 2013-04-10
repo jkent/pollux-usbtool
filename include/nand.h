@@ -41,12 +41,12 @@ struct nand_chip {
 	u32 plane_size;    /* kilobytes */
 };
 
-extern struct nand_chip nand_chips[NAND_MAX_CHIPS];
+extern struct nand_chip *nand_chip;
 extern char nand_bbt[NAND_MAX_CHIPS][1024];
 
 void nand_init(void);
-void nand_select(struct nand_chip *chip);
-int nand_erase(struct nand_chip *chip, u64 ofs);
+void nand_select_chip(int chipnr);
+int nand_erase(u64 ofs);
 
 #endif /* _NAND_H_ */
 

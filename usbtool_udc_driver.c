@@ -270,14 +270,24 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 	}
 
 	if (strcmp(group, "nand") == 0) {
-		if (strcmp(command, "info") == 0) {
+		if (strcmp(command, "select") == 0) {
 			if (ret != 3)
 				goto requeue;
 
 			if (n1 >= NAND_MAX_CHIPS)
 				goto requeue;
 
-			req->buf = &nand_chips[n1];
+			nand_select_chip(n1);
+			goto requeue;
+		}
+		if (strcmp(command, "info") == 0) {
+			if (ret != 2)
+				goto requeue;
+
+			if (!nand_chip)
+				goto requeue;
+
+			req->buf = nand_chip;
 			req->length = sizeof(struct nand_chip);
 			req->complete = command_response;
 
@@ -285,17 +295,15 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			return;
 		}
 		if (strcmp(command, "bad") == 0) {
-			if (ret != 3)
+			if (ret != 2)
 				goto requeue;
 
-			if (n1 >= NAND_MAX_CHIPS)
+			if (!nand_chip)
 				goto requeue;
 
-			struct nand_chip *chip = &nand_chips[n1];
-
-			req->buf = nand_bbt[n1];
-			req->length = ((chip->plane_size * chip->planes) /
-					(chip->block_size >> 10)) / 4;
+			req->buf = nand_bbt[nand_chip->num];
+			req->length = ((nand_chip->plane_size * nand_chip->planes) /
+					(nand_chip->block_size >> 10)) / 4;
 			req->complete = command_response;
 
 			tx_ep->ops->queue(tx_ep, req);

@@ -53,12 +53,13 @@ def main():
     )
 
     for chipnr in xrange(0, 2):
-        info = nand_info(tx_ep, rx_ep, chipnr)
+        nand_select(tx_ep, rx_ep, chipnr)
+        info = nand_info(tx_ep, rx_ep)
         if not info.valid:
             continue
         print "Chip %d: %d MB NAND" % (chipnr, (info.plane_size * info.planes) / 1024)
 
-        bad_blocks = nand_bad_blocks(tx_ep, rx_ep, chipnr)
+        bad_blocks = nand_bad(tx_ep, rx_ep)
         print "  bad blocks:", bad_blocks
 
 def write_all(ep, data):
@@ -99,15 +100,19 @@ def buffer_read(tx_ep, rx_ep, length, offset=0):
     sys.stdout.write('\n')
     return data
 
-def nand_info(tx_ep, rx_ep, chipnr):
-    command = 'nand info %08x' % (chipnr)
+def nand_select(tx_ep, rx_ep, chipnr):
+    command = 'nand select %08x' % (chipnr & 0xffffffff)
+    write_all(tx_ep, command)
+
+def nand_info(tx_ep, rx_ep):
+    command = 'nand info'
     write_all(tx_ep, command)
     data = rx_ep.read(512).tostring()
     NandChip = collections.namedtuple('NandChip', 'num valid badblockpos addr_cycles id page_shift page_size block_shift block_size pagemask oob_size planes plane_size')
     return NandChip._make(struct.unpack('<B?BB8sIIIIIIII', data))
 
-def nand_bad_blocks(tx_ep, rx_ep, chipnr):
-    command = 'nand bad %08x' % (chipnr)
+def nand_bad(tx_ep, rx_ep):
+    command = 'nand bad'
     write_all(tx_ep, command)
     data = rx_ep.read(1024)
     bad_blocks = []
