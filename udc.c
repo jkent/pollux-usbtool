@@ -24,7 +24,8 @@
 #include "asm/types.h"
 #include "baremetal/util.h"
 #include "mach/udc.h"
-#include "usb/ch9.h"
+#include "linux/list.h"
+#include "linux/usb/ch9.h"
 
 #include "udc.h"
 

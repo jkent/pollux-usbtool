@@ -27,18 +27,14 @@ int main(void)
 {
 	int i;
 
-	nand_init();
-
-	if (ramsize != -1) {
+	if (ramsize != -1)
 		iprintf("%d MB RAM\n", ramsize);
-	}
 
+	nand_init();
 	for (i = 0; i < NAND_MAX_CHIPS; i++) {
 		nand_select_chip(i);
-		if (nand_chip->valid) {
-			iprintf("%d MB NAND\n",
-				(nand_chip->plane_size * nand_chip->planes) / 1024);
-		}
+		if (nand_chip->info.known)
+			iprintf("%d MB NAND\n",	nand_chip->info.chip_size);
 	}
 	nand_select_chip(-1);
 

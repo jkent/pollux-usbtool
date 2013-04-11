@@ -25,6 +25,9 @@
 #include "udc.h"
 #include "usbtool_descriptors.h"
 
+#define BUFFER_START (0x1000000) /* 16 MB */
+#define BUFFER_SIZE  (0x1000000) /* 16 MB */
+
 
 static struct udc_req setup_req = {0};
 static struct udc_req command_req = {0};
@@ -246,9 +249,12 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			if (ret != 4)
 				goto requeue;
 
-			u32 offset = n1 & 0xFFFFFE;
-			buffer_req.buf = (u16 *)(0x1000000 + offset);
-			buffer_req.length = min(0x1000000 - offset,
+			/* buffer offset */
+			u32 offset = n1 & (BUFFER_SIZE - 1) & ~1;
+			buffer_req.buf = (u16 *)(BUFFER_START + offset);
+
+			/* read size */
+			buffer_req.length = min(BUFFER_START - offset,
 					n2 & ~1);
 
 			ep->ops->queue(tx_ep, &buffer_req);
@@ -258,9 +264,12 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			if (ret != 4)
 				goto requeue;
 
-			u32 offset = n1 & 0xFFFFFE;
-			buffer_req.buf = (u16 *)(0x1000000 + offset);
-			buffer_req.length = min(0x1000000 - offset,
+			/* buffer offset */
+			u32 offset = n1 & (BUFFER_SIZE - 1) & ~1;
+			buffer_req.buf = (u16 *)(BUFFER_START + offset);
+
+			/* write size */
+			buffer_req.length = min(BUFFER_START - offset,
 					n2 & ~1);
 
 			ep->ops->queue(rx_ep, &buffer_req);
@@ -274,6 +283,7 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			if (ret != 3)
 				goto requeue;
 
+			/* chip number */
 			if (n1 >= NAND_MAX_CHIPS)
 				goto requeue;
 
@@ -287,8 +297,8 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			if (!nand_chip)
 				goto requeue;
 
-			req->buf = nand_chip;
-			req->length = sizeof(struct nand_chip);
+			req->buf = &nand_chip->info;
+			req->length = sizeof(struct nand_info);
 			req->complete = command_response;
 
 			tx_ep->ops->queue(tx_ep, req);
@@ -301,9 +311,45 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			if (!nand_chip)
 				goto requeue;
 
-			req->buf = nand_bbt[nand_chip->num];
-			req->length = ((nand_chip->plane_size * nand_chip->planes) /
-					(nand_chip->block_size >> 10)) / 4;
+			req->buf = nand_chip->bbt;
+			req->length = nand_chip->num_blocks / 4;
+			req->complete = command_response;
+
+			tx_ep->ops->queue(tx_ep, req);
+			return;
+		}
+		if (strcmp(command, "read") == 0) {
+			if (ret != 4)
+				goto requeue;
+
+			if (!nand_chip)
+				goto requeue;
+
+			/* block number */
+			if (n1 >= nand_chip->num_blocks)
+				goto requeue;
+			int block = n1;
+
+			/* buffer offset */
+			u32 offset = n2 & (BUFFER_SIZE - 1) & ~3;
+			void *mem = (void *)(BUFFER_START + offset);
+			
+			nand_read_block(block, mem);
+			goto requeue;
+		}
+		if (strcmp(command, "erase") == 0) {
+			if (ret != 3)
+				goto requeue;
+
+			if (!nand_chip)
+				goto requeue;
+
+			/* block number */
+			if (n1 >= nand_chip->num_blocks)
+				goto requeue;
+
+			((u16 *)req->buf)[0] = nand_erase_block(n1);
+			req->length = 2;
 			req->complete = command_response;
 
 			tx_ep->ops->queue(tx_ep, req);

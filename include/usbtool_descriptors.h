@@ -15,10 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __USBTOOL_DESCRIPTORS_H__
-#define __USBTOOL_DESCRIPTORS_H__
+#ifndef _USBTOOL_DESCRIPTORS_H
+#define _USBTOOL_DESCRIPTORS_H
 
-#include "usb/ch9.h"
+#include "linux/usb/ch9.h"
 
 #define NUM_STRING_DESC 3
 #define NUM_CONFIG_DESC 1
@@ -40,5 +40,5 @@ struct usb_device_config_descriptor usbtool_dtfs_config;
 
 const struct usb_string_descriptor *usbtool_dt_string[NUM_STRING_DESC];
 
-#endif /* __USBTOOL_DESCRIPTORS_H__ */
+#endif /* _USBTOOL_DESCRIPTORS_H */
 

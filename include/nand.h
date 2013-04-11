@@ -2,9 +2,8 @@
  * Copyright (C) 2013 Jeff Kent <jeff@jkent.net>
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -16,37 +15,47 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef _NAND_H_
-#define _NAND_H_
+#ifndef _NAND_H
+#define _NAND_H
 
 #include <stdbool.h>
 
 #include "asm/types.h"
 
-#define NAND_MAX_CHIPS		(2)
+#define NAND_MAX_CHIPS (2)
+#define NAND_MAX_BLOCKS (4096)
+
+struct nand_info {
+	bool present;
+	bool known;
+	u8 id[8];
+	u8 badblock_pos;
+	u8 num_planes;
+	u16 page_size;  /* B */
+	u16 oob_size;   /* B */
+	u16 block_size; /* KiB */
+	u16 chip_size;  /* MiB */
+};
 
 struct nand_chip {
 	u8 num;
-	bool valid;
-	u8 badblockpos;
-	u8 addr_cycles;
-	u8 id[8];
-	u32 page_shift;
-	u32 page_size;     /* bytes */
-	u32 block_shift;
-	u32 block_size;    /* bytes */
-	u32 pagemask;
-	u32 oob_size;      /* bytes */
-	u32 planes;        /* count */
-	u32 plane_size;    /* kilobytes */
+	struct nand_info info;
+	u8 page_bits;
+	u8 block_bits;
+	u16 chip_bits;
+	u16 num_blocks;
+	u16 pages_per_block;
+	u16 read_size;  /* B */
+	u8 bbt[NAND_MAX_BLOCKS / 4];
 };
 
 extern struct nand_chip *nand_chip;
-extern char nand_bbt[NAND_MAX_CHIPS][1024];
 
 void nand_init(void);
 void nand_select_chip(int chipnr);
-int nand_erase(u64 ofs);
+int nand_erase_block(int block);
+void nand_read_page(int page, void *mem, int size);
+void nand_read_block(int block, void *mem);
 
-#endif /* _NAND_H_ */
+#endif /* _NAND_H */
 

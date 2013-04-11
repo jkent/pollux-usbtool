@@ -15,15 +15,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __UDC_H__
-#define __UDC_H__
+#ifndef _UDC_H
+#define _UDC_H
 
 #include <stdbool.h>
 
 #include "asm/types.h"
-#include "list.h"
+#include "linux/list.h"
 
-#include "usb/ch9.h"
+#include "linux/usb/ch9.h"
 
 #define NUM_ENDPOINTS 3
 
@@ -96,5 +96,5 @@ struct udc {
 int udc_init(struct udc_driver *driver);
 void udc_task(void);
 
-#endif /* __UDC_H__  */
+#endif /* _UDC_H  */
 

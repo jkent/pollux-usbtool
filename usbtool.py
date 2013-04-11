@@ -55,12 +55,31 @@ def main():
     for chipnr in xrange(0, 2):
         nand_select(tx_ep, rx_ep, chipnr)
         info = nand_info(tx_ep, rx_ep)
-        if not info.valid:
+        if not info['present']:
             continue
-        print "Chip %d: %d MB NAND" % (chipnr, (info.plane_size * info.planes) / 1024)
+
+        if not info['known']:
+            from binascii import hexlify
+            print 'Unknown NAND with ID: %s' % hexlify(info['id'])
+            continue
+
+        print 'Chip %d: %d MB NAND' % (chipnr, info['chip_size'])
 
         bad_blocks = nand_bad(tx_ep, rx_ep)
-        print "  bad blocks:", bad_blocks
+        print '  bad blocks: %s' % ', '.join(map(str, bad_blocks))
+
+        filename = 'nand%d.bin' % chipnr
+        with open(filename, 'wb') as f:
+            for block_num in xrange(info['num_blocks']):
+                percent = (float(block_num) / info['num_blocks']) * 100
+                sys.stdout.write('\x1b[2K\r  dumping to "%s", %.1f%% complete' \
+                        % (filename, percent))
+                sys.stdout.flush()
+                nand_read(tx_ep, rx_ep, block_num)
+                block = buffer_read(tx_ep, rx_ep, info['block_readsize'])
+                f.write(block)
+
+            print '\x1b[2K\r  dumped to "%s"' % (filename)
 
 def write_all(ep, data):
     length = len(data)
@@ -68,10 +87,6 @@ def write_all(ep, data):
     while written < length:
         chunk = data[written:written+64*1024]
         written += ep.write(chunk)
-
-def read_all(ep, length):
-    data = ep.read(length).tostring()
-    return data
 
 def buffer_write(ep, data, offset=0):
     offset &= ~1
@@ -81,10 +96,8 @@ def buffer_write(ep, data, offset=0):
         data += '\0' * remainder
         length += remainder
     command = 'buffer write %08x %08x' % (offset, length)
-    sys.stdout.write(command); sys.stdout.flush()
     write_all(ep, command)
     write_all(ep, data[:length])
-    sys.stdout.write('\n')
     return length
 
 def buffer_read(tx_ep, rx_ep, length, offset=0):
@@ -94,10 +107,8 @@ def buffer_read(tx_ep, rx_ep, length, offset=0):
     if remainder:
         length += remainder
     command = 'buffer read %08x %08x' % (offset, length)
-    sys.stdout.write(command); sys.stdout.flush()
     write_all(tx_ep, command)
-    data = read_all(rx_ep, length)
-    sys.stdout.write('\n')
+    data = rx_ep.read(length).tostring()
     return data
 
 def nand_select(tx_ep, rx_ep, chipnr):
@@ -107,9 +118,17 @@ def nand_select(tx_ep, rx_ep, chipnr):
 def nand_info(tx_ep, rx_ep):
     command = 'nand info'
     write_all(tx_ep, command)
-    data = rx_ep.read(512).tostring()
-    NandChip = collections.namedtuple('NandChip', 'num valid badblockpos addr_cycles id page_shift page_size block_shift block_size pagemask oob_size planes plane_size')
-    return NandChip._make(struct.unpack('<B?BB8sIIIIIIII', data))
+    data = rx_ep.read(20).tostring()
+    keys = ['present', 'known', 'id', 'badblock_pos', 'num_planes',
+              'page_size', 'oob_size', 'block_size', 'chip_size']
+    info = dict(zip(keys, struct.unpack('<??8sBBHHHH', data)))
+
+    if info['known']:
+        info['num_blocks'] = (info['chip_size'] * 1024) / info['block_size']
+        info['num_pages'] = (info['block_size'] * 1024) / info['page_size']
+        info['block_readsize'] = (info['block_size'] * 1024) + \
+                (info['oob_size'] * info['num_pages'])
+    return info
 
 def nand_bad(tx_ep, rx_ep):
     command = 'nand bad'
@@ -123,6 +142,19 @@ def nand_bad(tx_ep, rx_ep):
                 bad_blocks.append(block)
             block += 1
     return bad_blocks
+
+def nand_read(tx_ep, rx_ep, block, offset=0):
+    command = 'nand read %08x %08x' % (block, offset)
+    write_all(tx_ep, command)
+
+def nand_erase(tx_ep, rx_ep, block):
+    command = 'nand erase %08x' % (block)
+    write_all(tx_ep, command)
+    data = rx_ep.read(2)
+    result = struct.unpack('<h', data)[0]
+    if result == -1 or result & 1:
+        return False
+    return True
 
 if __name__ == '__main__':
     main()

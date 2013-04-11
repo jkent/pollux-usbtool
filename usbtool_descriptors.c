@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Jeff Kent <jakent@gmail.com>
+ * Copyright (C) 2013 Jeff Kent <jeff@jkent.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -15,7 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "usb/ch9.h"
+#include "linux/usb/ch9.h"
 
 #include "usbtool_descriptors.h"
 
