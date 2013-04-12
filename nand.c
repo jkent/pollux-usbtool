@@ -204,6 +204,20 @@ static void nand_identify()
 		return;
 
 	switch (info->id[0]) {
+	case 0x2C: /* Micron */
+		switch (info->id[1]) {
+		case 0xDA: /* 256MB/2k */
+			info->known = true;
+			info->badblock_pos = 0;
+			info->oob_size = 64;
+			info->num_planes = 2;
+
+			nand_chip->page_bits = 11;
+			nand_chip->block_bits = 17;
+			nand_chip->chip_bits = 28;
+			break;
+		}
+		break;
 	case 0xAD: /* Hynix */
 		switch (info->id[1]) {
 		case 0xD3: /* 1GB/2k */
