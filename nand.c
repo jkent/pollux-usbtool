@@ -248,7 +248,7 @@ static void nand_identify()
 
 	if (!info->known) {
 		fputs("unknown NAND: ", stdout);
-		for (i = 0; i < 6; i++)
+		for (i = 0; i < 8; i++)
 			iprintf("%02x", info->id[i]);
 		putchar('\n');
 		return;
@@ -353,6 +353,8 @@ void nand_read_page(int page, void *mem, int size)
 	if (!nand_chip || !nand_chip->info.known)
 		return;
 
+	nand_wait_busy();
+
 	nand_command(NAND_CMD_READ0, 0, page);
 	for (i = 0; i < size; i += 4)
 		*p++ = readl(nand_regs + NAND_DATA);
@@ -382,6 +384,8 @@ int nand_erase_block(int block)
 	if (nand_block_is_bad(block))
 		return -1;
 
+	nand_wait_busy();
+
 	page = block * nand_chip->pages_per_block;
 	nand_command(NAND_CMD_ERASE1, -1, page);
 	nand_command(NAND_CMD_ERASE2, -1, -1);
@@ -391,5 +395,50 @@ int nand_erase_block(int block)
 		iprintf("error erasing block %d\n", block);
 
 	return status;
+}
+
+int nand_write_page(int page, void *mem, int size) 
+{
+	u32 *p = mem;
+	int i, status;
+
+	if (!nand_chip || !nand_chip->info.known)
+		return -1;
+
+	if (nand_block_is_bad(page / nand_chip->pages_per_block))
+		return -1;
+
+	nand_wait_busy();
+
+	nand_command(NAND_CMD_SEQIN, 0, page);
+	for (i = 0; i < size; i += 4)
+		writel(*p++, nand_regs + NAND_DATA);
+	nand_command(NAND_CMD_PAGEPROG, -1, -1);
+
+	status = nand_wait_status();
+	if (status & NAND_STATUS_FAIL)
+		iprintf("error programming page %d\n", page);
+
+	return status;	
+}
+
+int nand_write_block(int block, void *mem)
+{
+	int first_page, offset;
+	int status;
+
+	if (!nand_chip || !nand_chip->info.known)
+		return -1;
+
+	first_page = block * nand_chip->pages_per_block;
+	for (offset = 0; offset < nand_chip->pages_per_block; offset++) {
+		status = nand_write_page(first_page + offset, mem,
+				nand_chip->read_size);
+		if (status & NAND_STATUS_FAIL)
+			return status;
+		mem += nand_chip->read_size;
+	}
+	
+	return 0;
 }
 

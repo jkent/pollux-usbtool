@@ -55,7 +55,9 @@ void nand_init(void);
 void nand_select_chip(int chipnr);
 int nand_erase_block(int block);
 void nand_read_page(int page, void *mem, int size);
+int nand_write_page(int page, void *mem, int size);
 void nand_read_block(int block, void *mem);
+int nand_write_block(int block, void *mem);
 
 #endif /* _NAND_H */
 

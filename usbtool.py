@@ -70,7 +70,7 @@ class UsbTool(object):
             if type(arg) is str:
                 l.append(arg)
             elif type(arg) is int:
-                l.append('%08x' % arg)
+                l.append('%x' % arg)
             else:
                 raise ValueError("invalid type")
         s = ' '.join(l)
@@ -167,6 +167,19 @@ class NandChip(object):
             return False
         return True
 
+    def write_block(self, block_num, buffer_offset=0):
+        self._select()
+        self.usbtool.command('nand write', block_num, buffer_offset)
+        data = self.usbtool.read(2)
+        result = struct.unpack('<h', data)[0]
+        if result == -1 or result & 1:
+            return False
+        return True
+
+    def mark_block(self, block_num, mark):
+        self._select()
+        self.usbtool.command('nand mark', block_num, mark)
+
     def dump(self, filename):
         info = self.info()
         buf = self.usbtool.get_buffer()
@@ -200,6 +213,11 @@ class NandChip(object):
 
 if __name__ == '__main__':
     dev = usb.core.find(idVendor=0x0000, idProduct=0x7f21)
+
+    if not dev:
+        print "no device found"
+        sys.exit(-1)
+
     usbtool = UsbTool(dev)
 
     for i in xrange(2):
@@ -216,5 +234,28 @@ if __name__ == '__main__':
             continue
 
         print 'NAND%d: %d MB' % (i, info['chip_size'])
-        chip.dump('nand%d.bin' % i)
 
+
+        chip.dump('test.bin')
+
+"""
+        buf = usbtool.get_buffer()
+        with open('nc600-orig.bin', 'rb') as f:
+            for block_num in xrange(info['num_blocks']):
+                chip.mark_block(block_num,0)
+
+                percent = (float(block_num) / info['num_blocks']) * 100
+                sys.stdout.write('\x1b[2K\r%.1f%% complete' \
+                        % percent)
+                sys.stdout.flush()
+
+                block = f.read(info['block_readsize'])
+                if not chip.erase_block(block_num):
+                    print "error erasing block %d" % block_num
+
+                buf.write(block)
+                if not chip.write_block(block_num):
+                    print "error writing block %d" % block_num
+
+        print '\x1b[2K\rcompleted'
+"""

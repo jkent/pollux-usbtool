@@ -347,13 +347,60 @@ static void command_request(struct udc_ep *ep, struct udc_req *req)
 			/* block number */
 			if (n1 >= nand_chip->num_blocks)
 				goto requeue;
+			int block = n1;
 
-			((u16 *)req->buf)[0] = nand_erase_block(n1);
+			((u16 *)req->buf)[0] = nand_erase_block(block);
 			req->length = 2;
 			req->complete = command_response;
 
 			tx_ep->ops->queue(tx_ep, req);
 			return;
+		}
+		if (strcmp(command, "write") == 0) {
+			if (ret != 4)
+				goto requeue;
+
+			if (!nand_chip)
+				goto requeue;
+
+			/* block number */
+			if (n1 >= nand_chip->num_blocks)
+				goto requeue;
+			int block = n1;
+
+			/* buffer offset */
+			u32 offset = n2 & (BUFFER_SIZE - 1) & ~3;
+			void *mem = (void *)(BUFFER_START + offset);
+			
+			((u16 *)req->buf)[0] = nand_write_block(block, mem);
+			req->length = 2;
+			req->complete = command_response;
+
+			tx_ep->ops->queue(tx_ep, req);
+			return;
+		}
+		if (strcmp(command, "mark") == 0) {
+			if (ret != 4)
+				goto requeue;
+
+			if (!nand_chip)
+				goto requeue;
+
+			/* block number */
+			if (n1 >= nand_chip->num_blocks)
+				goto requeue;
+			int block = n1;
+
+			/* mark */
+			u8 mark = (u8)n2 & 0x3;
+
+			int byte_num = block >> 2;
+			int shift = (block & 0x3) * 2;
+
+			nand_chip->bbt[byte_num] &= ~(0x3 << shift);
+			nand_chip->bbt[byte_num] |= mark << shift;
+
+			goto requeue;
 		}
 		goto requeue;
 	}
