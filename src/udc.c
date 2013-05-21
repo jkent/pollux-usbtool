@@ -425,12 +425,13 @@ static int udc_enable_ep(struct udc_ep *ep,
 		const struct usb_endpoint_descriptor *desc)
 {
 	struct udc *udc;
-	u16 ecr = 0;
+	u16 ecr;
 	u16 eier;
+	u16 edr;
 
 	if (!ep || !desc || ep_index(ep) == 0
 			|| desc->bDescriptorType != USB_DT_ENDPOINT
-			|| ep->address != desc->bEndpointAddress
+			|| ep_index(ep) != usb_endpoint_num(desc)
 			|| ep->maxpacket < desc->wMaxPacketSize)
 		return -EINVAL;
 
@@ -444,7 +445,17 @@ static int udc_enable_ep(struct udc_ep *ep,
 		return -ESHUTDOWN;
 
 	set_index(udc, ep->address);
-	ecr |= usb_endpoint_xfer_int(desc) ? UDC_ECR_IEMS : UDC_ECR_DUEN;
+	edr = readw(udc->regs + UDC_EDR);
+	if (usb_endpoint_dir_in(desc)) {
+		ep->address |= USB_DIR_IN;
+		edr |= 1 << ep_index(ep);
+	} else {
+		ep->address &= ~USB_DIR_IN;
+		edr &= ~(1 << ep_index(ep));
+	}
+	writew(edr, udc->regs + UDC_EDR);
+
+	ecr = usb_endpoint_xfer_int(desc) ? UDC_ECR_IEMS : UDC_ECR_DUEN;
 	ecr |= UDC_ECR_CDP;
 	writew(ecr, udc->regs + UDC_ECR);
 
@@ -452,7 +463,7 @@ static int udc_enable_ep(struct udc_ep *ep,
 	udc_set_halt(ep, 0);
 
 	eier = readw(udc->regs + UDC_EIER);
-	eier |= ep_index(ep);
+	eier |= 1 << ep_index(ep);
 	writew(eier, udc->regs + UDC_EIER);
 
 	return 0;
@@ -585,9 +596,6 @@ static void udc_init_ep(struct udc *udc, u8 epnum)
 	ep = &udc->ep[epnum];
 
 	ep->address = epnum;
-	if (epnum % 2) {
-		ep->address |= USB_DIR_IN;
-	}
 
 	INIT_LIST_HEAD(&ep->queue);
 
@@ -609,7 +617,6 @@ static void udc_reconfig(struct udc *udc)
 {
 	int epnum;
 
-	writew(0xAA, udc->regs + UDC_EDR);
 	writew(UDC_EP0, udc->regs + UDC_EIER);
 	writew(0, udc->regs + UDC_TR);
 	writew(UDC_SCR_DTZIEN_EN | UDC_SCR_RRD_EN | UDC_SCR_SUS_EN |
