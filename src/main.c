@@ -21,14 +21,9 @@
 #include "nand.h"
 #include "usbtool_udc_driver.h"
 
-extern int ramsize;
-
 int main(void)
 {
 	int i;
-
-	if (ramsize != -1)
-		iprintf("%d MB RAM\n", ramsize);
 
 	nand_init();
 	for (i = 0; i < NAND_MAX_CHIPS; i++) {

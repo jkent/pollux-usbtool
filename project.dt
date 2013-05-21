@@ -1,0 +1,18 @@
+mainmenu "Pollux usbtool"
+
+config PROJECT
+	depends on PLAT_POLLUX
+
+config ARCH_ARM_THUMB
+	bool "Thumb build"
+	default y
+
+source "$_DT_PROJECT/baremetal/lib.dt"
+
+choice BAREMETAL_BOOT_SOURCE
+	default BAREMETAL_BOOT_SOURCE_RAM
+endchoice
+
+choice BAREMETAL_CLIB
+	default BAREMETAL_CLIB_NEWLIB
+endchoice
