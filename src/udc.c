@@ -115,12 +115,10 @@ static int udc_write_fifo(struct udc_ep *ep, struct udc_req *req)
 			is_last = true;
 	}
 
-	if (is_last) {
+	if (is_last)
 		udc_complete_req(ep, req, 0);
-		return 1;
-	}
 
-	return 0;
+	return is_last;
 }
 
 static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
@@ -131,7 +129,7 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 	int buflen, count, length, bytes;
 	u32 offset;
 	u16 esr;
-	bool is_short;
+	int is_last = 0;
 
 	offset = ep_index(ep) ? UDC_ESR : UDC_EP0SR;
 	esr = readw(udc->regs + offset);
@@ -142,12 +140,14 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 	buflen = req->length - req->actual;
 
 	count = readw(udc->regs + UDC_BRCR);
-	length = (esr & UDC_ESR_LWO) ? (count * 2 - 1) : (count * 2);
+	length = count * 2;
+	if (esr & (ep_index(ep) ? UDC_ESR_LWO : UDC_EP0SR_EP0_LWO))
+		length -= 1;
 
 	bytes = min(length, buflen);
 
 	req->actual += bytes;
-	is_short = (length < ep->maxpacket);
+	is_last = (length < ep->maxpacket);
 
 	while (count--) {
 		word = readw(fifo);
@@ -159,12 +159,19 @@ static int udc_read_fifo(struct udc_ep *ep, struct udc_req *req)
 		}
 	}
 
-	if (is_short || req->actual == req->length) {
-		udc_complete_req(ep, req, 0);
-		return 1;
+	if (!ep_index(ep)) {
+		writew(UDC_ESR_RX_SUCCESS, udc->regs + UDC_EP0SR);
+
+		/* undocumented bits in ep0sr that signal last data */
+		is_last |= (esr & (1 << 15)) || (esr & (1 << 12));
 	}
 
-	return 0;
+	is_last |= (req->actual == req->length);
+
+	if (is_last)
+		udc_complete_req(ep, req, 0);
+
+	return is_last;
 }
 
 static inline void udc_epin_intr(struct udc *udc, struct udc_ep *ep)
