@@ -70,20 +70,22 @@ static void udc_nuke_ep(struct udc_ep *ep, int status)
 	}
 }
 
-static inline void udc_read_setup_pkt(struct udc *udc, u16 *buf)
+static inline int udc_read_setup_pkt(struct udc *udc, u16 *buf)
 {
 	void __iomem *fifo = udc->ep[0].fifo;
-	int read_count, write_count;
+	int read_count, count;
 	u16 word;
 
 	read_count = readw(udc->regs + UDC_BRCR);
-	write_count = 0;
+	count = 0;
 	while (read_count--) {
 		word = readw(fifo);
-		if (write_count++ < 4)
+		if (count++ < 4)
 			*buf++ = word;
 	}
 	writew(UDC_EP0SR_RX_SUCCESS, udc->regs + UDC_EP0SR);
+
+	return count;
 }
 
 static int udc_write_fifo(struct udc_ep *ep, struct udc_req *req)
@@ -329,7 +331,6 @@ static inline void udc_process_setup_pkt(struct udc *udc,
 		if ((ctrl->bRequestType & USB_RECIP_MASK) != USB_RECIP_DEVICE)
 			break;
 		udc->state = USB_STATE_ADDRESS;
-		udc->ep0_state = WAIT_FOR_SETUP;
 		ret = 0;
 		goto handled;
 
@@ -340,7 +341,6 @@ static inline void udc_process_setup_pkt(struct udc *udc,
 	case USB_REQ_SET_FEATURE:
 	case USB_REQ_CLEAR_FEATURE:
 		ret = udc_process_req_feature(udc, ctrl);
-		udc->ep0_state = WAIT_FOR_SETUP;
 		goto handled;
 	}
 
@@ -352,14 +352,19 @@ unhandled:
 	if (ctrl->bRequestType == (USB_TYPE_STANDARD | USB_RECIP_DEVICE) &&
 			ctrl->bRequest == USB_REQ_SET_CONFIGURATION) {
 		udc_nuke_ep(ep0, -ECONNRESET);
-		udc->state = (udc->config) ? USB_STATE_CONFIGURED : USB_STATE_ADDRESS;
-		ep0->address &= ~USB_DIR_IN;
-		udc->ep0_state = WAIT_FOR_SETUP;
+		udc->state = (udc->config) ? USB_STATE_CONFIGURED :
+				USB_STATE_ADDRESS;
 	}
 
 handled:
 	if (ret < 0) {
 		udc_set_halt(ep0, 1);
+		ep0->address &= ~USB_DIR_IN;
+		udc->ep0_state = WAIT_FOR_SETUP;
+		return;
+	}
+
+	if (ctrl->wLength == 0) {
 		ep0->address &= ~USB_DIR_IN;
 		udc->ep0_state = WAIT_FOR_SETUP;
 	}
@@ -403,8 +408,8 @@ static void udc_ep0_intr(struct udc *udc)
 	if (esr & UDC_EP0SR_RX_SUCCESS) {
 		if (udc->ep0_state == WAIT_FOR_SETUP) {
 			udc_nuke_ep(ep0, -EPROTO);
-			udc_read_setup_pkt(udc, (u16 *)&ctrl);
-			udc_process_setup_pkt(udc, &ctrl);
+			if (udc_read_setup_pkt(udc, (u16 *)&ctrl))
+				udc_process_setup_pkt(udc, &ctrl);
 		}
 		else if (!ep_is_in(ep0)) {
 			if (list_empty(&ep0->queue))
@@ -514,6 +519,7 @@ static int udc_queue(struct udc_ep *ep, struct udc_req *req)
 	req->actual = 0;
 
 	if (!ep_index(ep) && req->length == 0) {
+		ep->address &= ~USB_DIR_IN;
 		udc->ep0_state = WAIT_FOR_SETUP;
 		udc_complete_req(ep, req, 0);
 		return 0;
@@ -720,8 +726,8 @@ int udc_init(struct udc_driver *driver)
 	/* enable VBUS detection */
 	writew(UDC_USER1_VBUSENB, udc->regs + UDC_USER1);
 
-	/* driver */
-	udc->driver->init(udc);
+	if (udc->driver->init)
+		udc->driver->init(udc);
 
 	return 0;
 }
