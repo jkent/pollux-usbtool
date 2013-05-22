@@ -9,6 +9,6 @@ target    := usbtool.bin
 include $(_DT)/mk/rules.mk
 
 .PHONY: boot
-boot: $(target)
-	${MICROMON_DIR}/bootstrap.py $(target) 115200
+boot: $(BUILD)/$(target)
+	${MICROMON_DIR}/bootstrap.py $< 115200
 
